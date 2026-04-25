@@ -91,6 +91,7 @@ struct OptionsSimple
     bool ws7CaseSensitive = false;
     bool ws8CaseSensitive = false;
     bool ws9CaseSensitive = false;
+    bool keywordsHaveNoNumbers = true;
 
     std::vector<std::string> operatorsVec;
 
@@ -154,6 +155,8 @@ struct OptionSetSimple : public OptionSet<OptionsSimple>
         DefineProperty("ws7CaseSensitive", &OptionsSimple::ws7CaseSensitive);
         DefineProperty("ws8CaseSensitive", &OptionsSimple::ws8CaseSensitive);
         DefineProperty("ws9CaseSensitive", &OptionsSimple::ws9CaseSensitive);
+
+        DefineProperty("keywordsHaveNoNumbers", &OptionsSimple::keywordsHaveNoNumbers);
 
         DefineProperty("fold", &OptionsSimple::fold);
         DefineProperty("foldComments", &OptionsSimple::foldComments);
@@ -452,7 +455,7 @@ void SCI_METHOD LexerSimple::Lex(Sci_PositionU startPos, Sci_Position length, in
                 }
                 break;
             case SimpleStyles::Identifier:
-                if (!IsAWordChar(sc.ch))
+                if (!IsAWordChar(sc.ch) || (IsADigit(sc.ch) && options.keywordsHaveNoNumbers))
                 {
                     char s[1000];
                     char sl[1000];
@@ -523,7 +526,7 @@ void SCI_METHOD LexerSimple::Lex(Sci_PositionU startPos, Sci_Position length, in
         // Determine if a new state should be entered.
         if (sc.state == SimpleStyles::Default)
         {
-            if (options.styleNumbers && !IsAlphaNumeric(sc.chPrev) &&
+            if (options.styleNumbers && (!IsAlphaNumeric(sc.chPrev)||options.keywordsHaveNoNumbers) &&
                 (IsADigit(sc.ch) ||
                  (sc.ch == '.' && IsADigit(sc.chNext)) ||
                  ((sc.ch == '-' || sc.ch == '+') && (IsADigit(sc.chNext) || sc.chNext == '.')) ||
