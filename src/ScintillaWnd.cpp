@@ -59,6 +59,7 @@ extern Lexilla::LexerModule lmSimple;
 extern Lexilla::LexerModule lmLog;
 extern Lexilla::LexerModule lmSnippets;
 extern Lexilla::LexerModule lmAhk;
+extern Lexilla::LexerModule lmCSV;
 
 UINT32                      g_contextID                    = cmdContextMap;
 
@@ -1077,6 +1078,8 @@ void CScintillaWnd::SetupLexerForLang(const std::string& lang)
         lexer = lmSnippets.Create();
     if (lexerData.name == "bp_ahk")
         lexer = lmAhk.Create();
+    if (lexerData.name == "bp_csv")
+        lexer = lmCSV.Create();
     if (lexer == nullptr && lexerData.name.empty())
     {
         switch (lexerData.id)
@@ -1088,8 +1091,11 @@ void CScintillaWnd::SetupLexerForLang(const std::string& lang)
             case 1101:
                 lexer = lmLog.Create();
                 break;
-            case 1102:
+            case 1103:
                 lexer = lmAhk.Create();
+                break;
+            case 1104:
+                lexer = lmCSV.Create();
                 break;
             default:
                 break;

@@ -767,6 +767,9 @@
     <ClCompile Include="..\ext\sktoolslib\PackageRegistration.cpp">
       <Filter>sktoolslib</Filter>
     </ClCompile>
+    <ClCompile Include="CustomLexers\LexCSV.cxx">
+      <Filter>Lexer</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="BowPad.rc">
