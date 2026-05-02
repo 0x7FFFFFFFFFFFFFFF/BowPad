@@ -1,6 +1,6 @@
 ﻿// This file is part of BowPad.
 //
-// Copyright (C) 2013-2025 - Stefan Kueng
+// Copyright (C) 2013-2026 - Stefan Kueng
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -379,6 +379,87 @@ LRESULT CALLBACK CScintillaWnd::WinMsgHandler(HWND hwnd, UINT uMsg, WPARAM wPara
         {
             switch (wParam)
             {
+                case VK_DELETE:
+                {
+                    // Scintilla blocks multiline deletions at EOLs.
+                    // But we want this to work, it allows to quickly convert multiple lines into one.
+                    // That's why we try to handle this separately here.
+                    const auto isColumnSelection = (Scintilla().SelectionMode() == Scintilla::SelectionMode::Rectangle) || (Scintilla().SelectionMode() == Scintilla::SelectionMode::Thin);
+                    if (!isColumnSelection && !(GetKeyState(VK_SHIFT) & 0x8000) && !(GetKeyState(VK_CONTROL) & 0x8000) && !(GetKeyState(VK_MENU) & 0x8000)) // DEL & Multi-edit
+                    {
+                        const auto nSelections = Scintilla().Selections();
+                        if (nSelections > 1) // Multi-edit
+                        {
+                            struct MultiCaretInfo
+                            {
+                                int lenToRemove;
+                                int selIndex;
+                            };
+
+                            Scintilla().BeginUndoAction();
+                            std::vector<MultiCaretInfo> edgeOfEol;
+                            int                         nDoDefault = 0;
+
+                            for (int i = 0; i < nSelections; ++i)
+                            {
+                                const auto posStart = Scintilla().SelectionNStart(i);
+                                const auto posEnd   = Scintilla().SelectionNEnd(i);
+                                if (posStart != posEnd)
+                                    ++nDoDefault; // not at EOL, let Scintilla handle it
+                                else
+                                {
+                                    const size_t             docLen    = Scintilla().Length();
+                                    char                     eolStr[3] = {};
+                                    Scintilla::TextRangeFull tr{};
+                                    tr.chrg.cpMin = posStart;
+                                    tr.chrg.cpMax = posEnd + 2;
+                                    if (tr.chrg.cpMax > static_cast<Scintilla::Position>(docLen))
+                                        tr.chrg.cpMax = docLen;
+                                    tr.lpstrText = eolStr;
+
+                                    if (tr.chrg.cpMin != tr.chrg.cpMax)
+                                        Scintilla().GetTextRangeFull(&tr);
+
+                                    // Remember the EOL length (LF, CR, or CRLF)
+                                    int lenToRemove = -1;
+                                    if (eolStr[0] == '\r' && eolStr[1] == '\n')
+                                        lenToRemove = 2;
+                                    else if (eolStr[0] == '\r' || eolStr[0] == '\n')
+                                        lenToRemove = 1;
+
+                                    if (lenToRemove == -1)
+                                        ++nDoDefault;
+                                    else
+                                        edgeOfEol.emplace_back(lenToRemove, i);
+                                }
+                            }
+
+                            if (nDoDefault > 0)
+                            {
+                                // let Scintilla handle all caret positions not at the EOL
+                                if (prevWndProc)
+                                    CallWindowProc(prevWndProc, hwnd, uMsg, wParam, lParam);
+                                DefWindowProc(hwnd, uMsg, wParam, lParam);
+                            }
+
+                            // now handle the carets at the EOL: we just delete the EOL characters, which effectively merges the line with the next one
+                            static std::string empty_string = "";
+                            for (const auto& i : edgeOfEol)
+                            {
+                                // because the current caret modification will change the other caret positions,
+                                // so we get them dynamically in the loop.
+                                const auto posStart = Scintilla().SelectionNStart(i.selIndex);
+                                const auto posEnd   = Scintilla().SelectionNEnd(i.selIndex);
+                                Scintilla().SetTargetRange(posStart, posEnd + i.lenToRemove);
+                                Scintilla().ReplaceTarget(empty_string);
+                                Scintilla().SetSelectionNStart(i.selIndex, posStart);
+                                Scintilla().SetSelectionNEnd(i.selIndex, posStart);
+                            }
+                            Scintilla().EndUndoAction();
+                        }
+                    }
+                }
+                break;
                 case VK_RIGHT:
                 case VK_LEFT:
                 case VK_HOME:
@@ -1111,7 +1192,7 @@ void CScintillaWnd::SetupLexerForLang(const std::string& lang)
     {
         m_scintilla.SetProperty(propName.c_str(), propValue.c_str());
     }
-    auto length = m_scintilla.Length();
+    auto length        = m_scintilla.Length();
     m_hugeLevelReached = false;
     if (length > 500 * 1024 * 1024)
     {
@@ -1502,7 +1583,7 @@ void CScintillaWnd::MarkSelectedWord(bool clear, bool edit)
     m_scintilla.IndicatorClearRange(startStylePos, len);
 
     auto selSpan = m_scintilla.SelectionSpan();
-    if (clear || selSpan.Length() == 0 )
+    if (clear || selSpan.Length() == 0)
     {
         lastSelText.clear();
         m_docScroll.Clear(DOCSCROLLTYPE_SELTEXT);
@@ -2122,10 +2203,10 @@ bool CScintillaWnd::GetXmlMatchedTagsPos(XmlMatchedTagsPos& xmlTags) const
                                 }
                             } while (!tagFound && closeTagsRemaining > 0 && nextCloseTag.success);
                         } // end if (selfclosingtag)... else {
-                    }     // end if (-1 != closeAngle)  {
+                    } // end if (-1 != closeAngle)  {
 
                 } // end if !tagName.empty()
-            }     // end open tag test
+            } // end open tag test
         }
     }
     return tagFound;
@@ -2575,7 +2656,7 @@ void CScintillaWnd::ReflectEvents(SCNotification* pScn)
         case SCN_SAVEPOINTREACHED:
             EnableChangeHistory();
             break;
-            case SCN_MODIFIED:
+        case SCN_MODIFIED:
             if (pScn->modificationType & SC_MOD_INSERTTEXT)
             {
                 if (!m_hugeLevelReached && m_scintilla.Length() > 500 * 1024 * 1024)
