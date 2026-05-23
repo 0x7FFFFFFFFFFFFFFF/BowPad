@@ -1,4 +1,4 @@
-﻿// This file is part of BowPad.
+// This file is part of BowPad.
 //
 // Copyright (C) 2013-2017, 2021-2022 - Stefan Kueng
 //
@@ -267,82 +267,16 @@ void CMRU::RemovePath(const std::wstring& path, bool removeEvenIfPinned)
 
 std::wstring CMRU::GetMRUFilename()
 {
-    std::wstring path = CAppUtils::GetDataPath();
-    path              = CPathUtils::Append(path, L"mru");
-    return path;
+    return L"";
 }
 
 void CMRU::Load()
 {
     m_bLoaded = true;
-
-    std::wstring path = GetMRUFilename();
-
-    std::ifstream file;
-    try
-    {
-        file.open(path);
-        if (!file.good())
-            return;
-
-        constexpr int maxLineLength = 1024;
-        char   line[maxLineLength + 1]{};
-
-        for (;;)
-        {
-            file.getline(line, maxLineLength);
-            if (file.gcount() <= 0)
-                break;
-            std::wstring sLine = CUnicodeUtils::StdGetUnicode(line);
-            // Line format is : x*filename
-            // Where x can be '0' (unpinned) or '1' (pinned)
-            size_t pos = sLine.find(L'*');
-            if (pos != std::wstring::npos)
-            {
-                std::wstring sPinned = sLine.substr(0, pos);
-                std::wstring sPath   = sLine.substr(pos + 1);
-                bool         pinned  = (sPinned == L"1");
-                m_mruVec.push_back(MRUItem(sPath, pinned));
-            }
-        }
-        file.close();
-    }
-    catch (const std::ios_base::failure&)
-    {
-        return;
-    }
-    catch (const std::exception&)
-    {
-        return;
-    }
-
-    m_bLoaded = true;
 }
 
 void CMRU::Save() const
 {
-    std::wstring path = GetMRUFilename();
-
-    try
-    {
-        std::ofstream file;
-        file.open(path);
-        if (!file.good())
-            return;
-
-        for (const auto& mru : m_mruVec)
-            file << (mru.pinned ? "1" : "0") << "*" << CUnicodeUtils::StdGetUTF8(mru.path) << std::endl;
-
-        file.close();
-    }
-    catch (std::ios_base::failure&)
-    {
-        return;
-    }
-    catch (std::runtime_error&)
-    {
-        return;
-    }
 }
 
 void CMRU::PinPath(const std::wstring& path, bool bPin)

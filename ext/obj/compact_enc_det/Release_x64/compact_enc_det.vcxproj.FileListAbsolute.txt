@@ -1,0 +1,1 @@
+C:\my_projects\BowPad\ext\obj\compact_enc_det\Release_x64\compact_enc_det.lib

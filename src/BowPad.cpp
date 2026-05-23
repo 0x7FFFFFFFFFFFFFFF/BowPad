@@ -1,4 +1,4 @@
-﻿// This file is part of BowPad.
+// This file is part of BowPad.
 //
 // Copyright (C) 2013-2018, 2020-2025 - Stefan Kueng
 //
@@ -46,42 +46,6 @@ IUIImagePtr g_emptyIcon;
 
 static void RegisterWin11ContextMenu(bool doRegister)
 {
-    if (::GetSystemMetrics(SM_CLEANBOOT) > 0)
-    {
-        return;
-    }
-
-    // check if we're running on windows 11
-    PWSTR        pszPath = nullptr;
-    std::wstring sysPath;
-    if (SHGetKnownFolderPath(FOLDERID_System, KF_FLAG_CREATE, nullptr, &pszPath) == S_OK)
-    {
-        sysPath = pszPath;
-        CoTaskMemFree(pszPath);
-    }
-    auto             explorerVersion = CPathUtils::GetVersionFromFile(sysPath + L"\\shell32.dll");
-    std::vector<int> versions;
-    stringtok(versions, explorerVersion, true, L".");
-    bool isWin11OrLater = versions.size() > 3 && versions[2] >= 22000;
-    if (isWin11OrLater)
-    {
-        auto thread = std::thread([&]() {
-            try
-            {
-                auto                extPath  = CPathUtils::GetModuleDir(nullptr);
-                auto                msixPath = extPath + L"\\package.msix";
-                PackageRegistration registrator(extPath, msixPath, L"2BD6356E-3263-4AA6-A5FC-C48280BE5EDD");
-                if (doRegister)
-                    registrator.RegisterForCurrentUser();
-                else
-                    registrator.UnregisterForCurrentUser();
-            }
-            catch (const std::exception&)
-            {
-            }
-        });
-        thread.detach();
-    }
 }
 
 static void LoadLanguage(HINSTANCE hInstance)
@@ -130,119 +94,18 @@ static void LoadLanguage(HINSTANCE hInstance)
 
 static void SetIcon()
 {
-    HKEY hKey = nullptr;
-    if (RegOpenKey(HKEY_CURRENT_USER, L"Software\\Classes\\Applications\\BowPad.exe", &hKey) == ERROR_SUCCESS)
-    {
-        // registry key exists, which means at least one file type was associated with BowPad by the user
-        RegCloseKey(hKey);
-        if (RegOpenKey(HKEY_CURRENT_USER, L"Software\\Classes\\Applications\\BowPad.exe\\DefaultIcon", &hKey) != ERROR_SUCCESS)
-        {
-            // but the default icon hasn't been set yet: set the default icon now
-            if (RegCreateKey(HKEY_CURRENT_USER, L"Software\\Classes\\Applications\\BowPad.exe\\DefaultIcon", &hKey) == ERROR_SUCCESS)
-            {
-                OnOutOfScope(RegCloseKey(hKey););
-                std::wstring sIconPath = CStringUtils::Format(L"%s,-%d", CPathUtils::GetLongPathname(CPathUtils::GetModulePath()).c_str(), IDI_BOWPAD_DOC);
-                if (RegSetValue(hKey, nullptr, REG_SZ, sIconPath.c_str(), 0) == ERROR_SUCCESS)
-                {
-                    // now tell the shell about the changed icon
-                    SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, nullptr, nullptr);
-                }
-            }
-        }
-        else
-        {
-            RegCloseKey(hKey);
-        }
-    }
 }
 
 static void SetUserStringKey(LPCWSTR keyName, LPCWSTR subKeyName, const std::wstring& keyValue)
 {
-    DWORD dwSizeInBytes = static_cast<DWORD>((keyValue.length() + 1) * sizeof(WCHAR));
-    auto  status        = SHSetValue(HKEY_CURRENT_USER, keyName, subKeyName, REG_SZ, keyValue.c_str(), dwSizeInBytes);
-    if (status != ERROR_SUCCESS)
-    {
-        std::wstring msg = CStringUtils::Format(L"Registry key '%s' (subkey: '%s') could not be set.",
-                                                keyName, subKeyName ? subKeyName : L"(none)");
-        MessageBox(nullptr, msg.c_str(), L"BowPad", MB_ICONINFORMATION);
-    }
 }
 
 static void RegisterContextMenu(bool bAdd)
 {
-    if (bAdd)
-    {
-        auto         modulePath = CPathUtils::GetLongPathname(CPathUtils::GetModulePath());
-        std::wstring sIconPath  = CStringUtils::Format(L"%s,-%d", modulePath.c_str(), IDI_BOWPAD);
-        std::wstring sExePath   = CStringUtils::Format(L"%s /path:\"%%1\"", modulePath.c_str());
-        SetUserStringKey(L"Software\\Classes\\*\\shell\\BowPad", nullptr, L"Edit in BowPad");
-        SetUserStringKey(L"Software\\Classes\\*\\shell\\BowPad", L"Icon", sIconPath);
-        SetUserStringKey(L"Software\\Classes\\*\\shell\\BowPad", L"MultiSelectModel", L"Player");
-        SetUserStringKey(L"Software\\Classes\\*\\shell\\BowPad\\Command", nullptr, sExePath);
-        SetUserStringKey(L"Software\\Classes\\Directory\\shell\\BowPad", nullptr, L"Open Folder with BowPad");
-        SetUserStringKey(L"Software\\Classes\\Directory\\shell\\BowPad", L"Icon", sIconPath);
-        SetUserStringKey(L"Software\\Classes\\Directory\\shell\\BowPad\\Command", nullptr, sExePath);
-        SetUserStringKey(L"Software\\Classes\\Directory\\Background\\shell\\BowPad", nullptr, L"Open Folder with BowPad");
-        SetUserStringKey(L"Software\\Classes\\Directory\\Background\\shell\\BowPad", L"Icon", sIconPath);
-
-        sExePath = CStringUtils::Format(L"%s /path:\"%%V\"", modulePath.c_str());
-        SetUserStringKey(L"Software\\Classes\\Directory\\Background\\shell\\BowPad\\Command", nullptr, sExePath);
-    }
-    else
-    {
-        SHDeleteKey(HKEY_CURRENT_USER, L"Software\\Classes\\*\\shell\\BowPad");
-        SHDeleteKey(HKEY_CURRENT_USER, L"Software\\Classes\\Directory\\shell\\BowPad");
-        SHDeleteKey(HKEY_CURRENT_USER, L"Software\\Classes\\Directory\\Background\\shell\\BowPad");
-    }
 }
 
 static void SetJumplist(LPCTSTR appID)
 {
-    CoInitialize(nullptr);
-    OnOutOfScope(CoUninitialize());
-    ComPtr<ICustomDestinationList> pcdl;
-    HRESULT                        hr = CoCreateInstance(CLSID_DestinationList, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(pcdl.GetAddressOf()));
-    if (SUCCEEDED(hr))
-    {
-        hr = pcdl->DeleteList(appID);
-        hr = pcdl->SetAppID(appID);
-        if (FAILED(hr))
-            return;
-
-        UINT                 uMaxSlots;
-        ComPtr<IObjectArray> poaRemoved;
-        hr = pcdl->BeginList(&uMaxSlots, IID_PPV_ARGS(&poaRemoved));
-        if (FAILED(hr))
-            return;
-
-        ComPtr<IObjectCollection> poc;
-        hr = CoCreateInstance(CLSID_EnumerableObjectCollection, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(poc.GetAddressOf()));
-        if (FAILED(hr))
-            return;
-
-        if (!SysInfo::Instance().IsElevated())
-        {
-            ResString          sTemp(g_hRes, IDS_RUNASADMIN);
-
-            ComPtr<IShellLink> pslAdmin;
-            hr = CreateShellLink(L"/multiple", sTemp, 4, true, &pslAdmin);
-            if (SUCCEEDED(hr))
-            {
-                hr = poc->AddObject(pslAdmin.Get());
-            }
-        }
-
-        ComPtr<IObjectArray> poa;
-        hr = poc.As(&poa);
-        if (SUCCEEDED(hr))
-        {
-            hr = pcdl->AppendKnownCategory(KDC_FREQUENT);
-            hr = pcdl->AppendKnownCategory(KDC_RECENT);
-            if (!SysInfo::Instance().IsElevated())
-                hr = pcdl->AddUserTasks(poa.Get());
-            hr = pcdl->CommitList();
-        }
-    }
 }
 
 static void ForwardToOtherInstance(HWND hBowPadWnd, LPCTSTR lpCmdLine, CCmdLineParser& parser)

@@ -1,4 +1,4 @@
-﻿// This file is part of BowPad.
+// This file is part of BowPad.
 //
 // Copyright (C) 2013-2025 - Stefan Kueng
 //
@@ -214,7 +214,7 @@ CMainWindow::CMainWindow(HINSTANCE hInst, const WNDCLASSEX* wcx /* = nullptr*/)
     , m_treeWidth(0)
     , m_bDragging(false)
     , m_oldPt{0, 0}
-    , m_fileTreeVisible(true)
+    , m_fileTreeVisible(false)
     , m_bPathsToOpenMRU(true)
     , m_tabMoveMod(false)
     , m_bIgnoreFileChanges(false)
@@ -257,7 +257,7 @@ CMainWindow::CMainWindow(HINSTANCE hInst, const WNDCLASSEX* wcx /* = nullptr*/)
     m_hEmptyIcon          = static_cast<HICON>(::LoadImage(hResource, MAKEINTRESOURCE(IDI_EMPTY), IMAGE_ICON, cxIcon, cyIcon, LR_DEFAULTCOLOR));
     hEditorconfigActive   = static_cast<HICON>(::LoadImage(hResource, MAKEINTRESOURCE(IDI_EDITORCONFIGACTIVE), IMAGE_ICON, cxIcon, cyIcon, LR_DEFAULTCOLOR));
     hEditorconfigInactive = static_cast<HICON>(::LoadImage(hResource, MAKEINTRESOURCE(IDI_EDITORCONFIGINACTIVE), IMAGE_ICON, cxIcon, cyIcon, LR_DEFAULTCOLOR));
-    m_fileTreeVisible     = CIniSettings::Instance().GetInt64(L"View", L"FileTree", 1) != 0;
+    m_fileTreeVisible     = false;
     m_scratchEditor.InitScratch(g_hRes);
 }
 
@@ -322,13 +322,18 @@ HRESULT CMainWindow::LoadRibbonSettings(IUnknown* pView)
     HRESULT hr = pView->QueryInterface(IID_PPV_ARGS(&m_pRibbon));
     if (!CAppUtils::FailedShowMessage(hr))
     {
-        IStreamPtr   pStrm;
-        std::wstring ribbonSettingsPath = CAppUtils::GetDataPath() + L"\\ribbonsettings";
-        hr                              = SHCreateStreamOnFileEx(ribbonSettingsPath.c_str(), STGM_READ, 0, FALSE, nullptr, &pStrm);
-        if (!CAppUtils::FailedShowMessage(hr))
+        // Force ribbon to be minimized on startup
+        IPropertyStore* pPropertyStore = nullptr;
+        hr = m_pRibbon->QueryInterface(__uuidof(IPropertyStore), reinterpret_cast<void**>(&pPropertyStore));
+        if (SUCCEEDED(hr))
         {
-            hr = m_pRibbon->LoadSettingsFromStream(pStrm);
-            CAppUtils::FailedShowMessage(hr);
+            PROPVARIANT propVar;
+            PropVariantInit(&propVar);
+            propVar.vt = VT_BOOL;
+            propVar.boolVal = VARIANT_TRUE;
+            pPropertyStore->SetValue(UI_PKEY_Minimized, propVar);
+            pPropertyStore->Commit();
+            pPropertyStore->Release();
         }
     }
     return hr;
@@ -336,27 +341,12 @@ HRESULT CMainWindow::LoadRibbonSettings(IUnknown* pView)
 
 HRESULT CMainWindow::SaveRibbonSettings()
 {
-    IStreamPtr   pStrm;
-    std::wstring ribbonSettingsPath = CAppUtils::GetDataPath() + L"\\ribbonsettings";
-    HRESULT      hr                 = SHCreateStreamOnFileEx(ribbonSettingsPath.c_str(),
-                                                             STGM_WRITE | STGM_CREATE, FILE_ATTRIBUTE_NORMAL, TRUE, nullptr, &pStrm);
-    if (!CAppUtils::FailedShowMessage(hr))
+    if (m_pRibbon)
     {
-        LARGE_INTEGER  liPos{};
-        ULARGE_INTEGER uliSize{};
-
-        liPos.QuadPart   = 0;
-        uliSize.QuadPart = 0;
-
-        pStrm->Seek(liPos, STREAM_SEEK_SET, nullptr);
-        pStrm->SetSize(uliSize);
-
-        hr = m_pRibbon->SaveSettingsToStream(pStrm);
-        CAppUtils::FailedShowMessage(hr);
+        m_pRibbon->Release();
+        m_pRibbon = nullptr;
     }
-    m_pRibbon->Release();
-    m_pRibbon = nullptr;
-    return hr;
+    return S_OK;
 }
 
 HRESULT CMainWindow::ResizeToRibbon()
@@ -628,18 +618,20 @@ bool CMainWindow::RegisterAndCreateWindow()
     wcx.hCursor                = LoadCursor(nullptr, static_cast<LPTSTR>(IDC_SIZEWE)); // for resizing the tree control
     if (RegisterWindow(&wcx))
     {
-        // create the window hidden, then after the window is created use the RestoreWindowPos
-        // methods of the CIniSettings to show the window and move it to the saved position.
-        // RestoreWindowPos uses the API SetWindowPlacement() which ensures the window is automatically
-        // shown on a monitor and not outside (e.g. if the window position was saved on an external
-        // monitor but that monitor is not connected now).
-        if (CreateEx(WS_EX_ACCEPTFILES | WS_EX_NOINHERITLAYOUT, WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN, nullptr))
+        // Center window on screen at 1024x900
+        int screenW = GetSystemMetrics(SM_CXSCREEN);
+        int screenH = GetSystemMetrics(SM_CYSCREEN);
+        int winW = 1024;
+        int winH = 900;
+        int posX = (screenW - winW) / 2;
+        int posY = (screenH - winH) / 2;
+        RECT rc = { posX, posY, posX + winW, posY + winH };
+        if (CreateEx(WS_EX_ACCEPTFILES | WS_EX_NOINHERITLAYOUT, WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN, nullptr, &rc))
         {
             CAutoCloakWindow autoCloak(*this);
 
-            SetFileTreeWidth(static_cast<int>(CIniSettings::Instance().GetInt64(L"View", L"FileTreeWidth", 200)));
-            std::wstring winPosKey = L"MainWindow_" + GetMonitorSetupHash();
-            CIniSettings::Instance().RestoreWindowPos(winPosKey.c_str(), *this, 0);
+            SetFileTreeWidth(0);
+            ShowWindow(*this, SW_SHOW);
             UpdateWindow(*this);
             m_editor.StartupDone();
             PostMessage(m_hwnd, WM_AFTERINIT, 0, 0);
@@ -4746,10 +4738,10 @@ bool CMainWindow::OnLButtonUp(UINT nFlags, POINT point)
 
 void CMainWindow::ShowFileTree(bool bShow)
 {
-    m_fileTreeVisible = bShow;
-    ShowWindow(m_fileTree, m_fileTreeVisible ? SW_SHOW : SW_HIDE);
+    // FileTree is permanently disabled
+    m_fileTreeVisible = false;
+    ShowWindow(m_fileTree, SW_HIDE);
     ResizeChildWindows();
-    CIniSettings::Instance().SetInt64(L"View", L"FileTree", m_fileTreeVisible ? 1 : 0);
 }
 
 COLORREF CMainWindow::GetColorForDocument(DocID id)
