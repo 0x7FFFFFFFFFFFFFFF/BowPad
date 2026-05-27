@@ -2628,51 +2628,7 @@ void CMainWindow::UpdateTab(DocID docID)
 
 ResponseToCloseTab CMainWindow::AskToCloseTab()
 {
-    ResString         rTitle(g_hRes, IDS_HASMODIFICATIONS);
-    ResString         rQuestion(g_hRes, IDS_DOYOUWANTOSAVE);
-    ResString         rSave(g_hRes, IDS_SAVE);
-    ResString         rDontSave(g_hRes, IDS_DONTSAVE);
-    std::wstring      sQuestion         = CStringUtils::Format(rQuestion, m_tabBar.GetCurrentTitle().c_str());
-
-    TASKDIALOGCONFIG  tdc               = {sizeof(TASKDIALOGCONFIG)};
-    TASKDIALOG_BUTTON aCustomButtons[2] = {};
-    aCustomButtons[0].nButtonID         = 100;
-    aCustomButtons[0].pszButtonText     = rSave;
-    aCustomButtons[1].nButtonID         = 101;
-    aCustomButtons[1].pszButtonText     = rDontSave;
-    tdc.pButtons                        = aCustomButtons;
-    tdc.cButtons                        = _countof(aCustomButtons);
-    assert(tdc.cButtons <= _countof(aCustomButtons));
-    tdc.nDefaultButton     = 100;
-
-    tdc.hwndParent         = *this;
-    tdc.hInstance          = g_hRes;
-    tdc.dwCommonButtons    = TDCBF_CANCEL_BUTTON;
-    tdc.pszWindowTitle     = MAKEINTRESOURCE(IDS_APP_TITLE);
-    tdc.pszMainIcon        = TD_INFORMATION_ICON;
-    tdc.pszMainInstruction = rTitle;
-    tdc.pszContent         = sQuestion.c_str();
-    if (doCloseAll)
-        tdc.pszVerificationText = MAKEINTRESOURCE(IDS_DOITFORALLFILES);
-    int     nClickedBtn = 0;
-    auto    bc          = UnblockUI();
-    HRESULT hr          = TaskDialogIndirect(&tdc, &nClickedBtn, nullptr, &closeAllDoAll);
-    ReBlockUI(bc);
-    if (CAppUtils::FailedShowMessage(hr))
-        nClickedBtn = 0;
-    ResponseToCloseTab response = ResponseToCloseTab::StayOpen;
-    switch (nClickedBtn)
-    {
-        case 100:
-            response = ResponseToCloseTab::SaveAndClose;
-            break;
-        case 101:
-            response = ResponseToCloseTab::CloseWithoutSaving;
-            break;
-        default:
-            break;
-    }
-    return response;
+    return ResponseToCloseTab::CloseWithoutSaving;
 }
 
 ResponseToOutsideModifiedFile CMainWindow::AskToReloadOutsideModifiedFile(const CDocument& doc)
